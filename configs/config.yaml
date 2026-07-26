@@ -1,0 +1,24 @@
+app:
+  env: development
+  base_url: http://localhost:3000
+  timezone: Asia/Jakarta
+  log_level: info
+http:
+  addr: :8080
+  allowed_origins:
+    - http://localhost:3000
+database:
+  url: postgres://crm:crm@localhost:5432/crm?sslmode=disable
+  max_conns: 20
+  min_conns: 2
+redis:
+  url: redis://localhost:6379/0
+auth:
+  jwt_secret: change-me-in-production-32-bytes-minimum
+  jwt_ttl: 24h
+  bcrypt_cost: 12
+security:
+  encryption_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+telegram:
+  worker_interval: 5s
+  worker_batch_size: 20
