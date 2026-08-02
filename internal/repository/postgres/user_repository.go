@@ -22,6 +22,14 @@ func NewUserRepository(db *gorm.DB, location *time.Location) *UserRepository {
 }
 
 func (r *UserRepository) Register(ctx context.Context, orgName string, value entities.User) (entities.User, error) {
+	return r.createWithOrganization(ctx, orgName, value, true)
+}
+
+func (r *UserRepository) CreateGoogleUser(ctx context.Context, orgName string, value entities.User) (entities.User, error) {
+	return r.createWithOrganization(ctx, orgName, value, false)
+}
+
+func (r *UserRepository) createWithOrganization(ctx context.Context, orgName string, value entities.User, withPassword bool) (entities.User, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		organization := organizationModel{Name: orgName}
 		if err := tx.Create(&organization).Error; err != nil {
@@ -30,7 +38,11 @@ func (r *UserRepository) Register(ctx context.Context, orgName string, value ent
 		passwordHash := value.PasswordHash
 		record := userModel{
 			OrganizationID: organization.ID, FirstName: value.FirstName, LastName: value.LastName,
-			Email: strings.ToLower(value.Email), PasswordHash: &passwordHash, Role: value.Role, Status: "Aktif",
+			Email: strings.ToLower(value.Email), GoogleID: value.GoogleID,
+			AvatarURL: value.AvatarURL, Role: value.Role, Status: "Aktif",
+		}
+		if withPassword {
+			record.PasswordHash = &passwordHash
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return postgres.MapError(err)
@@ -128,6 +140,20 @@ func (r *UserRepository) AcceptInvite(ctx context.Context, tokenHash, passwordHa
 	return r.ByID(ctx, invitation.OrganizationID, invitation.UserID)
 }
 
+func (r *UserRepository) LinkGoogleID(ctx context.Context, organizationID, userID, googleID, avatarURL string) error {
+	updates := map[string]any{"google_id": googleID, "updated_at": time.Now()}
+	if avatarURL != "" {
+		updates["avatar_url"] = avatarURL
+	}
+	result := r.db.WithContext(ctx).Model(&userModel{}).
+		Where("id = ? AND organization_id = ? AND revoked_at IS NULL", userID, organizationID).
+		Updates(updates)
+	if result.Error != nil {
+		return postgres.MapError(result.Error)
+	}
+	return nil
+}
+
 func (r *UserRepository) ListTeam(ctx context.Context, organizationID string) ([]entities.User, error) {
 	var records []userModel
 	if err := r.db.WithContext(ctx).
@@ -189,7 +215,8 @@ func toUserEntity(record userModel) entities.User {
 	value := entities.User{
 		ID: record.ID, OrganizationID: record.OrganizationID,
 		FirstName: record.FirstName, LastName: record.LastName, Email: record.Email,
-		PasswordHash: passwordHash, Role: record.Role, Status: record.Status,
+		PasswordHash: passwordHash, GoogleID: record.GoogleID,
+		Role: record.Role, Status: record.Status,
 		AvatarURL: record.AvatarURL, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}
 	value.Name = strings.TrimSpace(value.FirstName + " " + value.LastName)

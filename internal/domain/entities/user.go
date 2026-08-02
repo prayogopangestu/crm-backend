@@ -10,6 +10,7 @@ type User struct {
 	Name           string     `json:"name,omitempty" gorm:"-"`
 	Email          string     `json:"email" gorm:"type:text;not null"`
 	PasswordHash   string     `json:"-" gorm:"type:text"`
+	GoogleID       *string    `json:"-" gorm:"type:text;uniqueIndex;column:google_id"`
 	Role           string     `json:"role" gorm:"type:text;not null"`
 	Status         string     `json:"status,omitempty" gorm:"type:text;not null;default:'Aktif'"`
 	AvatarURL      string     `json:"avatarUrl" gorm:"type:text;not null;default:''"`

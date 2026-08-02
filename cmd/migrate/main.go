@@ -5,8 +5,9 @@ import (
 	"os"
 
 	"github.com/prayogopangestu/crm-system/backend/configs"
-	infraPostgres "github.com/prayogopangestu/crm-system/backend/internal/infrastructure/database/postgres"
 	migrations "github.com/prayogopangestu/crm-system/backend/internal/infrastructure/database/migration"
+	infraPostgres "github.com/prayogopangestu/crm-system/backend/internal/infrastructure/database/postgres"
+	"github.com/prayogopangestu/crm-system/backend/pkg/envfile"
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	gormpostgres "gorm.io/driver/postgres"
@@ -14,6 +15,8 @@ import (
 )
 
 func main() {
+	envfile.Load(".env")
+
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "configs/config.yaml"
@@ -40,6 +43,7 @@ func main() {
 
 	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		migrations.CreateInitialSchema,
+		migrations.AddGoogleID,
 	})
 
 	if err := m.Migrate(); err != nil {

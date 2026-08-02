@@ -38,6 +38,11 @@ type Config struct {
 	Security struct {
 		EncryptionKey string `yaml:"encryption_key"`
 	} `yaml:"security"`
+	Google struct {
+		ClientID     string `yaml:"client_id"`
+		ClientSecret string `yaml:"client_secret"`
+		RedirectURL  string `yaml:"redirect_url"`
+	} `yaml:"google"`
 	Telegram struct {
 		WorkerInterval     time.Duration `yaml:"-"`
 		WorkerIntervalText string        `yaml:"worker_interval"`

@@ -24,6 +24,14 @@ type LoginInput struct {
 	Password string
 }
 
+type GoogleProfileInput struct {
+	GoogleID  string
+	Email     string
+	FirstName string
+	LastName  string
+	AvatarURL string
+}
+
 type LoginResult struct {
 	Token string
 	User  entities.User
@@ -101,6 +109,58 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, err
 		return LoginResult{}, err
 	}
 	return LoginResult{Token: token, User: entities.User{ID: value.ID, Name: value.Name, Role: value.Role}}, nil
+}
+
+func (s *Service) LoginWithGoogle(ctx context.Context, in GoogleProfileInput) (LoginResult, error) {
+	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
+	if in.GoogleID == "" || in.Email == "" {
+		return LoginResult{}, domain.ErrInvalidInput
+	}
+
+	existing, err := s.repository.ByEmail(ctx, in.Email)
+	switch {
+	case err == nil:
+		if existing.Status != "Aktif" {
+			return LoginResult{}, domain.ErrUnauthorized
+		}
+		if existing.GoogleID == nil || *existing.GoogleID == "" {
+			if err := s.repository.LinkGoogleID(ctx, existing.OrganizationID, existing.ID, in.GoogleID, in.AvatarURL); err != nil {
+				return LoginResult{}, err
+			}
+		}
+		token, err := s.tokens.Create(existing.ID, existing.OrganizationID, existing.Role, existing.Name)
+		if err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{Token: token, User: entities.User{ID: existing.ID, Name: existing.Name, Role: existing.Role}}, nil
+
+	case err == domain.ErrNotFound:
+		googleID := in.GoogleID
+		created, err := s.repository.CreateGoogleUser(ctx, "Organisasi "+firstNonEmpty(in.FirstName, in.Email), entities.User{
+			FirstName: in.FirstName, LastName: in.LastName, Email: in.Email,
+			GoogleID: &googleID, AvatarURL: in.AvatarURL, Role: domain.RoleAdmin,
+		})
+		if err != nil {
+			return LoginResult{}, err
+		}
+		token, err := s.tokens.Create(created.ID, created.OrganizationID, created.Role, created.Name)
+		if err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{Token: token, User: entities.User{ID: created.ID, Name: created.Name, Role: created.Role}}, nil
+
+	default:
+		return LoginResult{}, err
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return "Google User"
 }
 
 func (s *Service) AcceptInvite(ctx context.Context, token, password string) (entities.User, error) {

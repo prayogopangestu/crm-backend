@@ -9,6 +9,7 @@ type userModel struct {
 	LastName       string
 	Email          string
 	PasswordHash   *string
+	GoogleID       *string `gorm:"type:text;uniqueIndex;column:google_id"`
 	Role           string
 	Status         string
 	AvatarURL      string

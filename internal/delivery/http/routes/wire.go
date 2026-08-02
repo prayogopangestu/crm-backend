@@ -30,6 +30,7 @@ func WireAll(
 	baseURL string,
 	bcryptCost int,
 	cipherDeps IntegrationDeps,
+	googleCfg GoogleConfig,
 ) {
 	if db == nil {
 		return
@@ -42,6 +43,7 @@ func WireAll(
 		registerUserRoutes(router, protected, db, location, UserDeps{
 			Tokens: tokens, CacheHelper: cacheHelper, BaseURL: baseURL,
 			BcryptCost: bcryptCost, Logger: logger,
+			Google: googleCfg, Cache: cache,
 		}, authLimiter)
 
 		ContactRoutes(protected, db, location, cacheHelper, logger)

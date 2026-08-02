@@ -22,6 +22,7 @@ import (
 	integrationusecase "github.com/prayogopangestu/crm-system/backend/internal/usecase/integration"
 	usecasesupport "github.com/prayogopangestu/crm-system/backend/internal/usecase/support"
 	"github.com/prayogopangestu/crm-system/backend/pkg/encryption"
+	"github.com/prayogopangestu/crm-system/backend/pkg/envfile"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -37,6 +38,8 @@ type application struct {
 }
 
 func main() {
+	envfile.Load(".env")
+
 	cfg, configPath, err := loadConfig()
 	if err != nil {
 		slog.Error("load config failed", "error", err)
@@ -114,6 +117,11 @@ func newApplication(ctx context.Context, cfg configs.Config, log *slog.Logger) (
 			Cipher:      cipher,
 			Sender:      telegramClient,
 			Ready:       func() error { sqlDB, err := db.DB(); if err != nil { return err }; return sqlDB.PingContext(context.Background()) },
+			Google: httproutes.GoogleConfig{
+				ClientID:     cfg.Google.ClientID,
+				ClientSecret: cfg.Google.ClientSecret,
+				RedirectURL:  cfg.Google.RedirectURL,
+			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

@@ -8,11 +8,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prayogopangestu/crm-system/backend/internal/delivery/http/handler"
 	"github.com/prayogopangestu/crm-system/backend/internal/domain"
+	"github.com/prayogopangestu/crm-system/backend/internal/infrastructure/googleoauth"
 	pgrepo "github.com/prayogopangestu/crm-system/backend/internal/repository/postgres"
 	userusecase "github.com/prayogopangestu/crm-system/backend/internal/usecase/user"
 	usecasesupport "github.com/prayogopangestu/crm-system/backend/internal/usecase/support"
 	"gorm.io/gorm"
 )
+
+type GoogleConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+}
 
 // UserDeps bundles the configuration values required by the user usecase.
 type UserDeps struct {
@@ -21,6 +28,8 @@ type UserDeps struct {
 	BaseURL     string
 	BcryptCost  int
 	Logger      *slog.Logger
+	Google      GoogleConfig
+	Cache       domain.Cache
 }
 
 // registerUserRoutes wires the user feature and registers both the public
@@ -36,7 +45,13 @@ func registerUserRoutes(
 ) {
 	repo := pgrepo.NewUserRepository(db, location)
 	service := userusecase.NewService(repo, deps.CacheHelper, deps.Tokens, deps.BaseURL, deps.BcryptCost)
-	h := handler.NewUserHandler(service, deps.Logger)
+
+	var googleClient handler.GoogleOAuthClient
+	if deps.Google.ClientID != "" && deps.Google.ClientSecret != "" {
+		googleClient = googleoauth.New(deps.Google.ClientID, deps.Google.ClientSecret, deps.Google.RedirectURL)
+	}
+
+	h := handler.NewUserHandler(service, deps.Logger, googleClient, deps.BaseURL, deps.Cache)
 	h.PublicRoutes(publicRouter, authLimiter)
 	h.ProtectedRoutes(protectedRouter)
 }

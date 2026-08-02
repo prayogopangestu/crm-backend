@@ -32,6 +32,7 @@ type Deps struct {
 	Cipher      *encryption.Cipher
 	Sender      repositories.TelegramSender
 	Ready       func() error
+	Google      GoogleConfig
 }
 
 // NewRouter constructs the application chi router: global middleware, the
@@ -44,6 +45,7 @@ func NewRouter(deps Deps) http.Handler {
 	WireAll(router, deps.DB, deps.Cache, deps.CacheHelper, deps.Tokens,
 		deps.Logger, deps.Location, deps.BaseURL, deps.BcryptCost,
 		IntegrationDeps{Cipher: deps.Cipher, Sender: deps.Sender, Logger: deps.Logger},
+		deps.Google,
 	)
 	return router
 }
