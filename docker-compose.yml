@@ -28,6 +28,7 @@ services:
       retries: 20
 
   migrate:
+    profiles: ["migrate"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -56,10 +57,9 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
+    restart: "no"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/readyz"]
       interval: 10s
