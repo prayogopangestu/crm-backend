@@ -35,6 +35,9 @@ func NewService(repository repositories.TaskRepository, cache support.CacheHelpe
 }
 
 func (s *Service) List(ctx context.Context, principal domain.Principal, date, status string) ([]entities.Task, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	if date != "" {
 		if _, err := time.ParseInLocation("2006-01-02", date, s.location); err != nil {
 			return nil, domain.ErrInvalidInput
@@ -47,6 +50,9 @@ func (s *Service) List(ctx context.Context, principal domain.Principal, date, st
 }
 
 func (s *Service) Create(ctx context.Context, principal domain.Principal, input Input) (entities.Task, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Task{}, err
+	}
 	if err := validate(input, false); err != nil {
 		return entities.Task{}, err
 	}
@@ -58,6 +64,9 @@ func (s *Service) Create(ctx context.Context, principal domain.Principal, input 
 }
 
 func (s *Service) Update(ctx context.Context, principal domain.Principal, id string, input Input) (entities.Task, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Task{}, err
+	}
 	if err := validate(input, true); err != nil {
 		return entities.Task{}, err
 	}
@@ -69,6 +78,9 @@ func (s *Service) Update(ctx context.Context, principal domain.Principal, id str
 }
 
 func (s *Service) Toggle(ctx context.Context, principal domain.Principal, id string, completed bool) error {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return err
+	}
 	err := s.repository.Toggle(ctx, principal, id, completed)
 	if err == nil {
 		s.cache.InvalidateCRM(ctx, principal.OrganizationID)
@@ -77,6 +89,9 @@ func (s *Service) Toggle(ctx context.Context, principal domain.Principal, id str
 }
 
 func (s *Service) Delete(ctx context.Context, principal domain.Principal, id string) error {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return err
+	}
 	err := s.repository.Delete(ctx, principal, id)
 	if err == nil {
 		s.cache.InvalidateCRM(ctx, principal.OrganizationID)

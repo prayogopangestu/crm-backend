@@ -128,14 +128,15 @@ func (r *AnalyticsRepository) Leaderboard(ctx context.Context, organizationID st
 	end := start.AddDate(0, 1, 0)
 	previous := start.AddDate(0, -1, 0)
 	rows, err := r.db.WithContext(ctx).Raw(`
-		SELECT trim(u.first_name || ' ' || u.last_name),u.role,u.avatar_url,
+		SELECT trim(u.first_name || ' ' || u.last_name),om.role,u.avatar_url,
 		       COALESCE(sum(d.value) FILTER (WHERE d.updated_at >= ? AND d.updated_at < ?),0),
 		       COALESCE(sum(d.value) FILTER (WHERE d.updated_at >= ? AND d.updated_at < ?),0)
-		FROM users u
-		LEFT JOIN deals d ON d.assignee_id=u.id AND d.organization_id=u.organization_id
+		FROM organization_members om
+		JOIN users u ON u.id = om.user_id
+		LEFT JOIN deals d ON d.assignee_id = u.id AND d.organization_id = om.organization_id
 		  AND d.deleted_at IS NULL AND d.stage_key='won'
-		WHERE u.organization_id=? AND u.revoked_at IS NULL
-		GROUP BY u.id ORDER BY 4 DESC`,
+		WHERE om.organization_id=? AND om.revoked_at IS NULL AND om.status='Aktif'
+		GROUP BY om.user_id, u.first_name, u.last_name, om.role, u.avatar_url ORDER BY 4 DESC`,
 		start, end, previous, start, organizationID,
 	).Rows()
 	if err != nil {

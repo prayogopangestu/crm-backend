@@ -44,6 +44,7 @@ func main() {
 	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		migrations.CreateInitialSchema,
 		migrations.AddGoogleID,
+		migrations.CreateOrganizationMembers,
 	})
 
 	if err := m.Migrate(); err != nil {

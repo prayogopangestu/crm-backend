@@ -67,3 +67,13 @@ type InviteMember struct {
 func (r InviteMember) ToInput() userusecase.InviteInput {
 	return userusecase.InviteInput{Name: r.Name, Email: r.Email, Role: r.Role}
 }
+
+// SwitchWorkspace represents the JSON body for the workspace switch endpoint.
+type SwitchWorkspace struct {
+	WorkspaceID string `json:"workspaceId"`
+}
+
+// ToInput converts the request DTO into the user usecase SwitchWorkspaceInput.
+func (r SwitchWorkspace) ToInput() userusecase.SwitchWorkspaceInput {
+	return userusecase.SwitchWorkspaceInput{WorkspaceID: r.WorkspaceID}
+}

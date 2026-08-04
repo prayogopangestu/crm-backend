@@ -23,6 +23,9 @@ func NewService(repository repositories.SearchRepository, cache support.CacheHel
 }
 
 func (s *Service) Search(ctx context.Context, principal domain.Principal, query string) (entities.SearchResult, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return entities.SearchResult{}, err
+	}
 	query = strings.TrimSpace(query)
 	if len(query) < 2 {
 		return entities.SearchResult{}, domain.ErrInvalidInput

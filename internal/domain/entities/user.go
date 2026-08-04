@@ -26,12 +26,13 @@ func (User) TableName() string { return "users" }
 type Invitation struct {
 	ID             string     `json:"id" gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	OrganizationID string     `json:"-" gorm:"type:uuid;not null;column:organization_id"`
-	UserID         string     `json:"-" gorm:"type:uuid;not null;column:user_id"`
+	UserID         *string    `json:"-" gorm:"type:uuid;column:user_id"`
 	Email          string     `json:"email" gorm:"type:text;not null"`
 	Role           string     `json:"role" gorm:"type:text;not null"`
 	TokenHash      string     `json:"-" gorm:"type:text;not null;uniqueIndex"`
 	ExpiresAt      time.Time  `json:"expiresAt" gorm:"type:timestamptz;not null"`
 	AcceptedAt     *time.Time `json:"-" gorm:"type:timestamptz"`
+	InvitedBy      *string    `json:"-" gorm:"type:uuid;column:invited_by"`
 	CreatedAt      time.Time  `json:"createdAt,omitempty" gorm:"type:timestamptz;not null;default:now()"`
 	DeletedAt      *time.Time `json:"-" gorm:"type:timestamptz"`
 }
