@@ -41,6 +41,10 @@ type UserRepository interface {
 	// If an existing (revoked) membership exists it is reactivated instead.
 	AddMembership(ctx context.Context, organizationID, userID, role string, invitedBy *string) (entities.OrganizationMember, error)
 
+	// AcceptInviteForUser accepts a pending invitation for an existing logged-in
+	// user. The invited email must match the user's email.
+	AcceptInviteForUser(ctx context.Context, tokenHash, userID string) (entities.User, error)
+
 	// LookupInvitation loads a pending invitation by its token hash.
 	LookupInvitation(ctx context.Context, tokenHash string) (entities.Invitation, error)
 

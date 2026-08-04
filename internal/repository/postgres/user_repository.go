@@ -158,10 +158,11 @@ func (r *UserRepository) AcceptInvite(ctx context.Context, tokenHash, passwordHa
 			Order("created_at").First(&existing).Error
 		switch {
 		case findErr == nil:
-			updates := map[string]any{"status": "Aktif", "updated_at": now}
-			if existing.PasswordHash == nil || *existing.PasswordHash == "" {
-				updates["password_hash"] = passwordHash
+			if existing.PasswordHash != nil && *existing.PasswordHash != "" {
+				return domain.ErrConflict
 			}
+			updates := map[string]any{"status": "Aktif", "updated_at": now}
+			updates["password_hash"] = passwordHash
 			if err := tx.Model(&userModel{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
 				return postgres.MapError(err)
 			}
@@ -201,6 +202,51 @@ func (r *UserRepository) AcceptInvite(ctx context.Context, tokenHash, passwordHa
 		result.Role = invitation.Role
 		return postgres.MapError(tx.Model(&invitationModel{}).Where("id = ?", invitation.ID).
 			Updates(map[string]any{"accepted_at": now, "user_id": result.ID}).Error)
+	})
+	if err != nil {
+		return entities.User{}, err
+	}
+	return result, nil
+}
+
+// AcceptInviteForUser accepts an invitation using an already authenticated
+// global user. It rejects email mismatches so an invite link cannot be claimed
+// by a different account.
+func (r *UserRepository) AcceptInviteForUser(ctx context.Context, tokenHash, userID string) (entities.User, error) {
+	var result entities.User
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var invitation invitationModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("token_hash = ?", tokenHash).First(&invitation).Error; err != nil {
+			return postgres.MapError(err)
+		}
+		if invitation.AcceptedAt != nil {
+			return domain.ErrInviteUsed
+		}
+		if time.Now().After(invitation.ExpiresAt) {
+			return domain.ErrInviteExpired
+		}
+
+		var record userModel
+		if err := tx.Where("id = ? AND revoked_at IS NULL", userID).First(&record).Error; err != nil {
+			return postgres.MapError(err)
+		}
+		if !strings.EqualFold(record.Email, invitation.Email) {
+			return domain.ErrForbidden
+		}
+		if _, err := addMembershipOnTx(tx, invitation.OrganizationID, record.ID, invitation.Role, invitation.InvitedBy); err != nil {
+			return postgres.MapError(err)
+		}
+		now := time.Now()
+		if err := tx.Model(&invitationModel{}).Where("id = ?", invitation.ID).
+			Updates(map[string]any{"accepted_at": now, "user_id": record.ID}).Error; err != nil {
+			return postgres.MapError(err)
+		}
+		result = toUserEntity(record)
+		result.OrganizationID = invitation.OrganizationID
+		result.Role = invitation.Role
+		result.Status = "Aktif"
+		return nil
 	})
 	if err != nil {
 		return entities.User{}, err

@@ -28,8 +28,8 @@ func NewTaskRepository(db *gorm.DB, location *time.Location) *TaskRepository {
 func (r *TaskRepository) List(ctx context.Context, organizationID, date, status string, location *time.Location) ([]entities.Task, error) {
 	now := time.Now().In(location)
 	query := r.db.WithContext(ctx).Table("tasks AS t").Select(selectTask).
-		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.revoked_at IS NULL").
-		Joins("LEFT JOIN users u ON u.id = t.assignee_id").
+		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL").
+		Joins("LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL").
 		Where("t.organization_id = ? AND t.deleted_at IS NULL", organizationID)
 	if date != "" {
 		query = query.Where("t.due_date = ?::date", date)
@@ -163,8 +163,8 @@ func (r *TaskRepository) Delete(ctx context.Context, principal domain.Principal,
 
 func (r *TaskRepository) byID(ctx context.Context, organizationID, id string) (entities.Task, error) {
 	item, err := scanTask(r.db.WithContext(ctx).Table("tasks AS t").Select(selectTask).
-		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.revoked_at IS NULL").
-		Joins("LEFT JOIN users u ON u.id = t.assignee_id").
+		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL").
+		Joins("LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL").
 		Where("t.id = ? AND t.organization_id = ? AND t.deleted_at IS NULL", id, organizationID).Row(),
 		time.Now().In(r.location))
 	return item, postgres.MapError(err)

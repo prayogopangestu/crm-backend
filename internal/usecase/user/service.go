@@ -233,6 +233,27 @@ func (s *Service) AcceptInvite(ctx context.Context, token, password string) (Log
 	return LoginResult{Token: tok, User: user, Workspaces: workspaces}, nil
 }
 
+// AcceptInviteForPrincipal lets an already authenticated user claim an invite
+// for their own email without creating another user or setting a new password.
+func (s *Service) AcceptInviteForPrincipal(ctx context.Context, principal domain.Principal, token string) (LoginResult, error) {
+	if token == "" {
+		return LoginResult{}, domain.ErrInvalidInput
+	}
+	user, err := s.repository.AcceptInviteForUser(ctx, tokenHash(token), principal.UserID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	tok, err := s.tokens.Create(user.ID, user.OrganizationID, user.Role, user.Name)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	workspaces, werr := s.repository.ListWorkspaces(ctx, user.ID)
+	if werr != nil {
+		workspaces = nil
+	}
+	return LoginResult{Token: tok, User: user, Workspaces: workspaces}, nil
+}
+
 func (s *Service) Profile(ctx context.Context, principal domain.Principal) (entities.User, error) {
 	var value entities.User
 	key := "crm:" + principal.OrganizationID + ":profile:" + principal.UserID
@@ -259,7 +280,7 @@ func (s *Service) UpdateProfile(ctx context.Context, principal domain.Principal,
 }
 
 func (s *Service) ListTeam(ctx context.Context, principal domain.Principal) ([]entities.User, error) {
-	if err := domain.RequireWorkspaceAdmin(principal); err != nil {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
 		return nil, err
 	}
 	return s.repository.ListTeam(ctx, principal.OrganizationID)

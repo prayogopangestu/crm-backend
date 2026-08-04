@@ -56,8 +56,8 @@ func (r *SearchRepository) Search(ctx context.Context, organizationID, query str
 		       COALESCE(trim(u.first_name || ' ' || u.last_name),''),
 		       COALESCE(u.id::text,''),t.created_at,t.updated_at
 		FROM tasks t
-		LEFT JOIN organization_members om ON om.user_id=t.assignee_id AND om.organization_id=t.organization_id AND om.revoked_at IS NULL
-		LEFT JOIN users u ON u.id=t.assignee_id
+		LEFT JOIN organization_members om ON om.user_id=t.assignee_id AND om.organization_id=t.organization_id AND om.status='Aktif' AND om.revoked_at IS NULL
+		LEFT JOIN users u ON u.id=om.user_id AND u.revoked_at IS NULL
 		WHERE t.organization_id = ? AND t.deleted_at IS NULL
 		  AND (t.title ILIKE ? OR t.company ILIKE ? OR t.notes ILIKE ?)
 		ORDER BY t.updated_at DESC LIMIT 10`,
@@ -96,8 +96,8 @@ func (r *SearchRepository) Search(ctx context.Context, organizationID, query str
 		       COALESCE(u.id::text,''),COALESCE(trim(u.first_name || ' ' || u.last_name),''),
 		       COALESCE(u.avatar_url,''),d.created_at,d.updated_at
 		FROM deals d
-		LEFT JOIN organization_members om ON om.user_id=d.assignee_id AND om.organization_id=d.organization_id AND om.revoked_at IS NULL
-		LEFT JOIN users u ON u.id=d.assignee_id
+		LEFT JOIN organization_members om ON om.user_id=d.assignee_id AND om.organization_id=d.organization_id AND om.status='Aktif' AND om.revoked_at IS NULL
+		LEFT JOIN users u ON u.id=om.user_id AND u.revoked_at IS NULL
 		WHERE d.organization_id = ? AND d.deleted_at IS NULL
 		  AND (d.title ILIKE ? OR d.company ILIKE ?)
 		ORDER BY d.updated_at DESC LIMIT 10`,

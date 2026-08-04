@@ -17,8 +17,8 @@ const selectDeal = `
 	       COALESCE(u.id::text,''),COALESCE(trim(u.first_name || ' ' || u.last_name),''),
 	       COALESCE(u.avatar_url,''),d.created_at,d.updated_at
 	FROM deals d
-	LEFT JOIN organization_members om ON om.user_id = d.assignee_id AND om.organization_id = d.organization_id AND om.revoked_at IS NULL
-	LEFT JOIN users u ON u.id = d.assignee_id`
+	LEFT JOIN organization_members om ON om.user_id = d.assignee_id AND om.organization_id = d.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL
+	LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL`
 
 type DealRepository struct {
 	db       *gorm.DB
