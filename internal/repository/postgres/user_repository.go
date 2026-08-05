@@ -92,19 +92,46 @@ func (r *UserRepository) ByEmailGlobal(ctx context.Context, email string) (entit
 // source of truth for permissions, not the legacy users.role column.
 func (r *UserRepository) ByID(ctx context.Context, organizationID, userID string) (entities.User, error) {
 	var row struct {
-		userModel
-		MemberRole   *string `gorm:"column:member_role"`
-		MemberStatus *string `gorm:"column:member_status"`
+		ID             string
+		OrganizationID string
+		FirstName      string
+		LastName       string
+		Email          string
+		PasswordHash   *string
+		GoogleID       *string
+		Role           string
+		Status         string
+		AvatarURL      string
+		CreatedAt      time.Time
+		UpdatedAt      time.Time
+		RevokedAt      *time.Time
+		MemberRole     *string
+		MemberStatus   *string
 	}
-	err := r.db.WithContext(ctx).Table("users AS u").
-		Select("u.*, om.role AS member_role, om.status AS member_status").
-		Joins("LEFT JOIN organization_members om ON om.user_id = u.id AND om.organization_id = ? AND om.revoked_at IS NULL", organizationID).
-		Where("u.id = ? AND u.revoked_at IS NULL", userID).
-		First(&row).Error
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT u.id,u.organization_id,u.first_name,u.last_name,u.email,u.password_hash,u.google_id,
+		       u.role,u.status,u.avatar_url,u.created_at,u.updated_at,u.revoked_at,
+		       om.role AS member_role,om.status AS member_status
+		FROM users u
+		LEFT JOIN organization_members om
+		  ON om.user_id = u.id
+		 AND om.organization_id = ?
+		 AND om.revoked_at IS NULL
+		WHERE u.id = ? AND u.revoked_at IS NULL
+		LIMIT 1`, organizationID, userID).Scan(&row).Error
 	if err != nil {
 		return entities.User{}, postgres.MapError(err)
 	}
-	value := toUserEntity(row.userModel)
+	if row.ID == "" {
+		return entities.User{}, domain.ErrNotFound
+	}
+	value := toUserEntity(userModel{
+		ID: row.ID, OrganizationID: row.OrganizationID,
+		FirstName: row.FirstName, LastName: row.LastName, Email: row.Email,
+		PasswordHash: row.PasswordHash, GoogleID: row.GoogleID,
+		Role: row.Role, Status: row.Status, AvatarURL: row.AvatarURL,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, RevokedAt: row.RevokedAt,
+	})
 	if row.MemberRole != nil && *row.MemberRole != "" {
 		value.Role = *row.MemberRole
 	}

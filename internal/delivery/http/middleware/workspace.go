@@ -34,13 +34,21 @@ func WorkspaceAccess(db *gorm.DB) func(http.Handler) http.Handler {
 				Role string
 				Name string
 			}
-			err := db.WithContext(r.Context()).Table("organization_members AS om").
-				Select("om.role, trim(u.first_name || ' ' || u.last_name) AS name").
-				Joins("JOIN users u ON u.id = om.user_id").
-				Where("om.user_id = ? AND om.organization_id = ? AND om.status = 'Aktif' AND om.revoked_at IS NULL AND u.revoked_at IS NULL",
-					principal.UserID, workspaceID).
-				First(&row).Error
+			err := db.WithContext(r.Context()).Raw(`
+				SELECT om.role, trim(u.first_name || ' ' || u.last_name) AS name
+				FROM organization_members om
+				JOIN users u ON u.id = om.user_id
+				WHERE om.user_id = ?
+				  AND om.organization_id = ?
+				  AND om.status = 'Aktif'
+				  AND om.revoked_at IS NULL
+				  AND u.revoked_at IS NULL
+				LIMIT 1`, principal.UserID, workspaceID).Scan(&row).Error
 			if err != nil {
+				response.Error(w, http.StatusForbidden, "forbidden", "Anda tidak memiliki akses", response.RequestID(r.Context()), nil)
+				return
+			}
+			if row.Role == "" {
 				response.Error(w, http.StatusForbidden, "forbidden", "Anda tidak memiliki akses", response.RequestID(r.Context()), nil)
 				return
 			}
