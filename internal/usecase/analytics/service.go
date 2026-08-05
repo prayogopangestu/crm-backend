@@ -27,6 +27,9 @@ func NewService(repository repositories.AnalyticsRepository, cache support.Cache
 }
 
 func (s *Service) DashboardStats(ctx context.Context, principal domain.Principal) (entities.DashboardStats, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return entities.DashboardStats{}, err
+	}
 	var result entities.DashboardStats
 	key := "crm:" + principal.OrganizationID + ":dashboard:stats"
 	err := s.cache.Load(ctx, key, time.Minute, &result, func() error {
@@ -38,6 +41,9 @@ func (s *Service) DashboardStats(ctx context.Context, principal domain.Principal
 }
 
 func (s *Service) ConversionChart(ctx context.Context, principal domain.Principal) ([]entities.ConversionPoint, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	var result []entities.ConversionPoint
 	key := "crm:" + principal.OrganizationID + ":dashboard:conversion"
 	err := s.cache.Load(ctx, key, time.Minute, &result, func() error {
@@ -49,6 +55,9 @@ func (s *Service) ConversionChart(ctx context.Context, principal domain.Principa
 }
 
 func (s *Service) Activities(ctx context.Context, principal domain.Principal, limit int) ([]entities.Activity, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	if limit < 1 {
 		limit = 5
 	}
@@ -59,6 +68,9 @@ func (s *Service) Activities(ctx context.Context, principal domain.Principal, li
 }
 
 func (s *Service) Leaderboard(ctx context.Context, principal domain.Principal, period string) ([]entities.LeaderboardEntry, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	month := time.Now().In(s.location)
 	if strings.EqualFold(period, "Bulan Lalu") {
 		month = month.AddDate(0, -1, 0)
@@ -74,6 +86,9 @@ func (s *Service) Leaderboard(ctx context.Context, principal domain.Principal, p
 }
 
 func (s *Service) LostReasons(ctx context.Context, principal domain.Principal) ([]entities.LostReason, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	var result []entities.LostReason
 	key := "crm:" + principal.OrganizationID + ":reports:lost-reasons"
 	err := s.cache.Load(ctx, key, 5*time.Minute, &result, func() error {
@@ -85,6 +100,9 @@ func (s *Service) LostReasons(ctx context.Context, principal domain.Principal) (
 }
 
 func (s *Service) Goals(ctx context.Context, principal domain.Principal) ([]entities.PerformanceGoal, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	var result []entities.PerformanceGoal
 	key := "crm:" + principal.OrganizationID + ":reports:goals"
 	err := s.cache.Load(ctx, key, 5*time.Minute, &result, func() error {

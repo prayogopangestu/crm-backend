@@ -36,6 +36,9 @@ func NewService(repository repositories.ContactRepository, cache support.CacheHe
 }
 
 func (s *Service) List(ctx context.Context, principal domain.Principal, search, status string, page, limit int) (entities.ContactList, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return entities.ContactList{}, err
+	}
 	if page < 1 {
 		page = 1
 	}
@@ -52,6 +55,9 @@ func (s *Service) List(ctx context.Context, principal domain.Principal, search, 
 }
 
 func (s *Service) Create(ctx context.Context, principal domain.Principal, input Input) (entities.Contact, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Contact{}, err
+	}
 	if err := validate(input); err != nil {
 		return entities.Contact{}, err
 	}
@@ -63,6 +69,9 @@ func (s *Service) Create(ctx context.Context, principal domain.Principal, input 
 }
 
 func (s *Service) Update(ctx context.Context, principal domain.Principal, id string, input Input) (entities.Contact, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Contact{}, err
+	}
 	if err := validate(input); err != nil {
 		return entities.Contact{}, err
 	}
@@ -74,6 +83,9 @@ func (s *Service) Update(ctx context.Context, principal domain.Principal, id str
 }
 
 func (s *Service) Delete(ctx context.Context, principal domain.Principal, id string) error {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return err
+	}
 	err := s.repository.Delete(ctx, principal, id)
 	if err == nil {
 		s.cache.InvalidateCRM(ctx, principal.OrganizationID)

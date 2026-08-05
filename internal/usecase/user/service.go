@@ -33,8 +33,9 @@ type GoogleProfileInput struct {
 }
 
 type LoginResult struct {
-	Token string
-	User  entities.User
+	Token      string
+	User       entities.User
+	Workspaces []entities.WorkspaceSummary
 }
 
 type UpdateProfileInput struct {
@@ -52,6 +53,18 @@ type InviteInput struct {
 type InviteResult struct {
 	User      entities.User
 	InviteURL string
+}
+
+// SwitchWorkspaceInput selects the active workspace for the authenticated user.
+type SwitchWorkspaceInput struct {
+	WorkspaceID string
+}
+
+// SwitchWorkspaceResult is returned after switching the active workspace: a
+// fresh token scoped to the selected workspace plus its summary.
+type SwitchWorkspaceResult struct {
+	Token     string
+	Workspace entities.WorkspaceSummary
 }
 
 type Service struct {
@@ -86,7 +99,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (entities.U
 	first, last := splitName(input.Name)
 	return s.repository.Register(ctx, input.CompanyName, entities.User{
 		FirstName: first, LastName: last, Email: input.Email,
-		PasswordHash: string(hash), Role: domain.RoleAdmin,
+		PasswordHash: string(hash), Role: domain.RoleOwner,
 	})
 }
 
@@ -104,11 +117,31 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (LoginResult, err
 	if err := bcrypt.CompareHashAndPassword([]byte(value.PasswordHash), []byte(input.Password)); err != nil {
 		return LoginResult{}, domain.ErrUnauthorized
 	}
-	token, err := s.tokens.Create(value.ID, value.OrganizationID, value.Role, value.Name)
+	active, workspaces, err := s.resolveActiveWorkspace(ctx, value.ID)
 	if err != nil {
 		return LoginResult{}, err
 	}
-	return LoginResult{Token: token, User: entities.User{ID: value.ID, Name: value.Name, Role: value.Role}}, nil
+	token, err := s.tokens.Create(value.ID, active.ID, active.Role, value.Name)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return LoginResult{
+		Token: token, Workspaces: workspaces,
+		User: entities.User{ID: value.ID, Name: value.Name, Role: active.Role},
+	}, nil
+}
+
+// resolveActiveWorkspace returns the user's default/first active workspace and
+// the full workspace list. A user without any active membership cannot log in.
+func (s *Service) resolveActiveWorkspace(ctx context.Context, userID string) (entities.WorkspaceSummary, []entities.WorkspaceSummary, error) {
+	workspaces, err := s.repository.ListWorkspaces(ctx, userID)
+	if err != nil {
+		return entities.WorkspaceSummary{}, nil, err
+	}
+	if len(workspaces) == 0 {
+		return entities.WorkspaceSummary{}, nil, domain.ErrUnauthorized
+	}
+	return workspaces[0], workspaces, nil
 }
 
 func (s *Service) LoginWithGoogle(ctx context.Context, in GoogleProfileInput) (LoginResult, error) {
@@ -128,26 +161,40 @@ func (s *Service) LoginWithGoogle(ctx context.Context, in GoogleProfileInput) (L
 				return LoginResult{}, err
 			}
 		}
-		token, err := s.tokens.Create(existing.ID, existing.OrganizationID, existing.Role, existing.Name)
+		active, workspaces, err := s.resolveActiveWorkspace(ctx, existing.ID)
 		if err != nil {
 			return LoginResult{}, err
 		}
-		return LoginResult{Token: token, User: entities.User{ID: existing.ID, Name: existing.Name, Role: existing.Role}}, nil
+		token, err := s.tokens.Create(existing.ID, active.ID, active.Role, existing.Name)
+		if err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{
+			Token: token, Workspaces: workspaces,
+			User: entities.User{ID: existing.ID, Name: existing.Name, Role: active.Role},
+		}, nil
 
 	case err == domain.ErrNotFound:
 		googleID := in.GoogleID
 		created, err := s.repository.CreateGoogleUser(ctx, "Organisasi "+firstNonEmpty(in.FirstName, in.Email), entities.User{
 			FirstName: in.FirstName, LastName: in.LastName, Email: in.Email,
-			GoogleID: &googleID, AvatarURL: in.AvatarURL, Role: domain.RoleAdmin,
+			GoogleID: &googleID, AvatarURL: in.AvatarURL, Role: domain.RoleOwner,
 		})
 		if err != nil {
 			return LoginResult{}, err
 		}
-		token, err := s.tokens.Create(created.ID, created.OrganizationID, created.Role, created.Name)
+		active, workspaces, err := s.resolveActiveWorkspace(ctx, created.ID)
 		if err != nil {
 			return LoginResult{}, err
 		}
-		return LoginResult{Token: token, User: entities.User{ID: created.ID, Name: created.Name, Role: created.Role}}, nil
+		token, err := s.tokens.Create(created.ID, active.ID, active.Role, created.Name)
+		if err != nil {
+			return LoginResult{}, err
+		}
+		return LoginResult{
+			Token: token, Workspaces: workspaces,
+			User: entities.User{ID: created.ID, Name: created.Name, Role: active.Role},
+		}, nil
 
 	default:
 		return LoginResult{}, err
@@ -163,15 +210,48 @@ func firstNonEmpty(values ...string) string {
 	return "Google User"
 }
 
-func (s *Service) AcceptInvite(ctx context.Context, token, password string) (entities.User, error) {
+func (s *Service) AcceptInvite(ctx context.Context, token, password string) (LoginResult, error) {
 	if token == "" || len(password) < 6 {
-		return entities.User{}, domain.ErrInvalidInput
+		return LoginResult{}, domain.ErrInvalidInput
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
-		return entities.User{}, err
+		return LoginResult{}, err
 	}
-	return s.repository.AcceptInvite(ctx, tokenHash(token), string(hash))
+	user, err := s.repository.AcceptInvite(ctx, tokenHash(token), string(hash))
+	if err != nil {
+		return LoginResult{}, err
+	}
+	tok, err := s.tokens.Create(user.ID, user.OrganizationID, user.Role, user.Name)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	workspaces, werr := s.repository.ListWorkspaces(ctx, user.ID)
+	if werr != nil {
+		workspaces = nil
+	}
+	return LoginResult{Token: tok, User: user, Workspaces: workspaces}, nil
+}
+
+// AcceptInviteForPrincipal lets an already authenticated user claim an invite
+// for their own email without creating another user or setting a new password.
+func (s *Service) AcceptInviteForPrincipal(ctx context.Context, principal domain.Principal, token string) (LoginResult, error) {
+	if token == "" {
+		return LoginResult{}, domain.ErrInvalidInput
+	}
+	user, err := s.repository.AcceptInviteForUser(ctx, tokenHash(token), principal.UserID)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	tok, err := s.tokens.Create(user.ID, user.OrganizationID, user.Role, user.Name)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	workspaces, werr := s.repository.ListWorkspaces(ctx, user.ID)
+	if werr != nil {
+		workspaces = nil
+	}
+	return LoginResult{Token: tok, User: user, Workspaces: workspaces}, nil
 }
 
 func (s *Service) Profile(ctx context.Context, principal domain.Principal) (entities.User, error) {
@@ -200,23 +280,30 @@ func (s *Service) UpdateProfile(ctx context.Context, principal domain.Principal,
 }
 
 func (s *Service) ListTeam(ctx context.Context, principal domain.Principal) ([]entities.User, error) {
-	if err := domain.RequireAdmin(principal); err != nil {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
 		return nil, err
 	}
 	return s.repository.ListTeam(ctx, principal.OrganizationID)
 }
 
 func (s *Service) InviteMember(ctx context.Context, principal domain.Principal, input InviteInput) (InviteResult, error) {
-	if err := domain.RequireAdmin(principal); err != nil {
+	if err := domain.RequireWorkspaceAdmin(principal); err != nil {
 		return InviteResult{}, err
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	if len(input.Name) < 2 || (input.Role != domain.RoleAdmin && input.Role != domain.RoleSales) {
+	if !domain.InvitableRole(input.Role) {
 		return InviteResult{}, domain.ErrInvalidInput
 	}
 	if _, err := mail.ParseAddress(input.Email); err != nil {
 		return InviteResult{}, domain.ErrInvalidInput
+	}
+	exists, err := s.repository.ActiveMembershipExists(ctx, principal.OrganizationID, input.Email)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	if exists {
+		return InviteResult{}, domain.ErrConflict
 	}
 	plain, hash, err := randomToken()
 	if err != nil {
@@ -233,7 +320,7 @@ func (s *Service) InviteMember(ctx context.Context, principal domain.Principal, 
 }
 
 func (s *Service) RevokeMember(ctx context.Context, principal domain.Principal, userID string) error {
-	if err := domain.RequireAdmin(principal); err != nil {
+	if err := domain.RequireWorkspaceAdmin(principal); err != nil {
 		return err
 	}
 	if userID == principal.UserID {
@@ -244,4 +331,44 @@ func (s *Service) RevokeMember(ctx context.Context, principal domain.Principal, 
 		s.cache.InvalidateProfile(ctx, principal.OrganizationID, userID)
 	}
 	return err
+}
+
+// ListWorkspaces returns every workspace the authenticated user can access.
+func (s *Service) ListWorkspaces(ctx context.Context, principal domain.Principal) ([]entities.WorkspaceSummary, error) {
+	return s.repository.ListWorkspaces(ctx, principal.UserID)
+}
+
+// SwitchWorkspace mints a fresh token scoped to a workspace the user is an
+// active member of. Non-members are rejected with ErrForbidden.
+func (s *Service) SwitchWorkspace(ctx context.Context, principal domain.Principal, input SwitchWorkspaceInput) (SwitchWorkspaceResult, error) {
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	if input.WorkspaceID == "" {
+		return SwitchWorkspaceResult{}, domain.ErrInvalidInput
+	}
+	membership, err := s.repository.Membership(ctx, principal.UserID, input.WorkspaceID)
+	if err != nil {
+		if err == domain.ErrNotFound {
+			return SwitchWorkspaceResult{}, domain.ErrForbidden
+		}
+		return SwitchWorkspaceResult{}, err
+	}
+	workspaces, err := s.repository.ListWorkspaces(ctx, principal.UserID)
+	if err != nil {
+		return SwitchWorkspaceResult{}, err
+	}
+	var summary entities.WorkspaceSummary
+	for _, ws := range workspaces {
+		if ws.ID == input.WorkspaceID {
+			summary = ws
+			break
+		}
+	}
+	if summary.ID == "" {
+		summary = entities.WorkspaceSummary{ID: input.WorkspaceID, Role: membership.Role}
+	}
+	token, err := s.tokens.Create(principal.UserID, input.WorkspaceID, membership.Role, principal.Name)
+	if err != nil {
+		return SwitchWorkspaceResult{}, err
+	}
+	return SwitchWorkspaceResult{Token: token, Workspace: summary}, nil
 }

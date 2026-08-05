@@ -35,10 +35,16 @@ func NewService(repository repositories.DealRepository, cache support.CacheHelpe
 }
 
 func (s *Service) List(ctx context.Context, principal domain.Principal) ([]entities.Deal, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	return s.repository.List(ctx, principal.OrganizationID)
 }
 
 func (s *Service) Create(ctx context.Context, principal domain.Principal, input Input) (entities.Deal, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Deal{}, err
+	}
 	if err := validate(input); err != nil {
 		return entities.Deal{}, err
 	}
@@ -50,6 +56,9 @@ func (s *Service) Create(ctx context.Context, principal domain.Principal, input 
 }
 
 func (s *Service) Update(ctx context.Context, principal domain.Principal, id string, input Input) (entities.Deal, error) {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return entities.Deal{}, err
+	}
 	if err := validate(input); err != nil {
 		return entities.Deal{}, err
 	}
@@ -61,6 +70,9 @@ func (s *Service) Update(ctx context.Context, principal domain.Principal, id str
 }
 
 func (s *Service) UpdateStage(ctx context.Context, principal domain.Principal, id string, input StageInput) error {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return err
+	}
 	if input.Stage == "" || (input.Stage == "lost" && strings.TrimSpace(input.LostReason) == "") {
 		return domain.ErrInvalidInput
 	}
@@ -75,6 +87,9 @@ func (s *Service) UpdateStage(ctx context.Context, principal domain.Principal, i
 }
 
 func (s *Service) Delete(ctx context.Context, principal domain.Principal, id string) error {
+	if err := domain.RequireCanWriteCRM(principal); err != nil {
+		return err
+	}
 	err := s.repository.Delete(ctx, principal, id)
 	if err == nil {
 		s.cache.InvalidateCRM(ctx, principal.OrganizationID)

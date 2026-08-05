@@ -28,7 +28,8 @@ func NewTaskRepository(db *gorm.DB, location *time.Location) *TaskRepository {
 func (r *TaskRepository) List(ctx context.Context, organizationID, date, status string, location *time.Location) ([]entities.Task, error) {
 	now := time.Now().In(location)
 	query := r.db.WithContext(ctx).Table("tasks AS t").Select(selectTask).
-		Joins("LEFT JOIN users u ON u.id = t.assignee_id AND u.organization_id = t.organization_id").
+		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL").
+		Joins("LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL").
 		Where("t.organization_id = ? AND t.deleted_at IS NULL", organizationID)
 	if date != "" {
 		query = query.Where("t.due_date = ?::date", date)
@@ -162,7 +163,8 @@ func (r *TaskRepository) Delete(ctx context.Context, principal domain.Principal,
 
 func (r *TaskRepository) byID(ctx context.Context, organizationID, id string) (entities.Task, error) {
 	item, err := scanTask(r.db.WithContext(ctx).Table("tasks AS t").Select(selectTask).
-		Joins("LEFT JOIN users u ON u.id = t.assignee_id AND u.organization_id = t.organization_id").
+		Joins("LEFT JOIN organization_members om ON om.user_id = t.assignee_id AND om.organization_id = t.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL").
+		Joins("LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL").
 		Where("t.id = ? AND t.organization_id = ? AND t.deleted_at IS NULL", id, organizationID).Row(),
 		time.Now().In(r.location))
 	return item, postgres.MapError(err)
@@ -195,12 +197,15 @@ func (r *TaskRepository) resolveAssignee(ctx context.Context, principal domain.P
 		return principal.UserID, nil
 	}
 	var resolved string
-	query := r.db.WithContext(ctx).Table("users").Select("id").
-		Where("organization_id = ? AND revoked_at IS NULL", principal.OrganizationID)
+	query := r.db.WithContext(ctx).Table("organization_members AS om").
+		Select("om.user_id").
+		Joins("JOIN users u ON u.id = om.user_id").
+		Where("om.organization_id = ? AND om.revoked_at IS NULL AND om.status = 'Aktif' AND om.role IN (?, ?, ?)",
+			principal.OrganizationID, domain.RoleOwner, domain.RoleAdmin, domain.RoleSales)
 	if id != "" {
-		query = query.Where("id = ?", id)
+		query = query.Where("om.user_id = ?", id)
 	} else {
-		query = query.Where("lower(trim(first_name || ' ' || last_name)) = lower(?)", name)
+		query = query.Where("lower(trim(u.first_name || ' ' || u.last_name)) = lower(?)", name)
 	}
 	if err := query.Row().Scan(&resolved); err != nil {
 		return "", postgres.MapError(err)

@@ -25,6 +25,9 @@ func NewService(repository repositories.PipelineRepository, cache support.CacheH
 }
 
 func (s *Service) List(ctx context.Context, principal domain.Principal) ([]entities.Stage, error) {
+	if err := domain.RequireCanReadCRM(principal); err != nil {
+		return nil, err
+	}
 	return s.repository.List(ctx, principal.OrganizationID)
 }
 

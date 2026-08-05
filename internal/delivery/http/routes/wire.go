@@ -39,6 +39,7 @@ func WireAll(
 
 	router.Group(func(protected chi.Router) {
 		protected.Use(middleware.Authenticate(tokens))
+		protected.Use(middleware.WorkspaceAccess(db))
 
 		registerUserRoutes(router, protected, db, location, UserDeps{
 			Tokens: tokens, CacheHelper: cacheHelper, BaseURL: baseURL,

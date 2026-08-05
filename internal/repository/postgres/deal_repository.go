@@ -16,7 +16,9 @@ const selectDeal = `
 	SELECT d.id,d.organization_id,d.title,d.company,d.value,d.priority,d.stage_key,d.lost_reason,
 	       COALESCE(u.id::text,''),COALESCE(trim(u.first_name || ' ' || u.last_name),''),
 	       COALESCE(u.avatar_url,''),d.created_at,d.updated_at
-	FROM deals d LEFT JOIN users u ON u.id=d.assignee_id AND u.organization_id=d.organization_id`
+	FROM deals d
+	LEFT JOIN organization_members om ON om.user_id = d.assignee_id AND om.organization_id = d.organization_id AND om.status = 'Aktif' AND om.revoked_at IS NULL
+	LEFT JOIN users u ON u.id = om.user_id AND u.revoked_at IS NULL`
 
 type DealRepository struct {
 	db       *gorm.DB
@@ -156,8 +158,8 @@ func (r *DealRepository) recordStageChange(tx *gorm.DB, principal domain.Princip
 	message := "Deal " + title + " berhasil dimenangkan oleh " + principal.Name
 	if err := tx.Exec(`
 		INSERT INTO notifications (organization_id,user_id,title,message)
-		SELECT ?,id,'Deal Won!',? FROM users
-		WHERE organization_id = ? AND revoked_at IS NULL AND status = 'Aktif'`,
+		SELECT ?,om.user_id,'Deal Won!',? FROM organization_members om
+		WHERE om.organization_id = ? AND om.revoked_at IS NULL AND om.status = 'Aktif'`,
 		principal.OrganizationID, message, principal.OrganizationID,
 	).Error; err != nil {
 		return postgres.MapError(err)
@@ -203,8 +205,9 @@ func (r *DealRepository) ensureStage(ctx context.Context, organizationID, key st
 
 func (r *DealRepository) ensureUser(ctx context.Context, organizationID, userID string) error {
 	var count int64
-	if err := r.db.WithContext(ctx).Table("users").
-		Where("id = ? AND organization_id = ? AND revoked_at IS NULL", userID, organizationID).
+	if err := r.db.WithContext(ctx).Table("organization_members").
+		Where("organization_id = ? AND user_id = ? AND status = 'Aktif' AND revoked_at IS NULL AND role IN (?, ?, ?)",
+			organizationID, userID, domain.RoleOwner, domain.RoleAdmin, domain.RoleSales).
 		Count(&count).Error; err != nil {
 		return err
 	}

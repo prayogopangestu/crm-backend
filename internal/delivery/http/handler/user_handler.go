@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/prayogopangestu/crm-system/backend/internal/delivery/http/response"
 	"github.com/prayogopangestu/crm-system/backend/internal/delivery/http/request"
+	"github.com/prayogopangestu/crm-system/backend/internal/delivery/http/response"
 	"github.com/prayogopangestu/crm-system/backend/internal/domain"
 	"github.com/prayogopangestu/crm-system/backend/internal/infrastructure/googleoauth"
 	userusecase "github.com/prayogopangestu/crm-system/backend/internal/usecase/user"
@@ -49,6 +49,9 @@ func (h *UserHandler) ProtectedRoutes(router chi.Router) {
 	router.Get("/api/team", h.listTeam)
 	router.Post("/api/team/invite", h.inviteMember)
 	router.Delete("/api/team/{id}", h.revokeMember)
+	router.Post("/api/invitations/accept", h.acceptInviteAuthenticated)
+	router.Get("/api/workspaces", h.listWorkspaces)
+	router.Post("/api/workspaces/switch", h.switchWorkspace)
 }
 
 func (h *UserHandler) register(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +76,9 @@ func (h *UserHandler) login(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(h.logger, w, r, err)
 		return
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"token": result.Token, "user": result.User})
+	response.JSON(w, http.StatusOK, map[string]any{
+		"token": result.Token, "user": result.User, "workspaces": result.Workspaces,
+	})
 }
 
 func (h *UserHandler) acceptInvite(w http.ResponseWriter, r *http.Request) {
@@ -81,11 +86,14 @@ func (h *UserHandler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	if !response.DecodeJSON(w, r, &req) {
 		return
 	}
-	if _, err := h.service.AcceptInvite(r.Context(), req.Token, req.Password); err != nil {
+	result, err := h.service.AcceptInvite(r.Context(), req.Token, req.Password)
+	if err != nil {
 		response.WriteError(h.logger, w, r, err)
 		return
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Undangan berhasil diaktifkan"})
+	response.JSON(w, http.StatusOK, map[string]any{
+		"token": result.Token, "user": result.User, "workspaces": result.Workspaces,
+	})
 }
 
 func (h *UserHandler) profile(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +146,45 @@ func (h *UserHandler) revokeMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Anggota tim dihapus"})
+}
+
+func (h *UserHandler) acceptInviteAuthenticated(w http.ResponseWriter, r *http.Request) {
+	var req request.AcceptInvite
+	if !response.DecodeJSON(w, r, &req) {
+		return
+	}
+	result, err := h.service.AcceptInviteForPrincipal(r.Context(), response.Principal(r), req.Token)
+	if err != nil {
+		response.WriteError(h.logger, w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{
+		"token": result.Token, "user": result.User, "workspaces": result.Workspaces,
+	})
+}
+
+func (h *UserHandler) listWorkspaces(w http.ResponseWriter, r *http.Request) {
+	result, err := h.service.ListWorkspaces(r.Context(), response.Principal(r))
+	if err != nil {
+		response.WriteError(h.logger, w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, result)
+}
+
+func (h *UserHandler) switchWorkspace(w http.ResponseWriter, r *http.Request) {
+	var req request.SwitchWorkspace
+	if !response.DecodeJSON(w, r, &req) {
+		return
+	}
+	result, err := h.service.SwitchWorkspace(r.Context(), response.Principal(r), req.ToInput())
+	if err != nil {
+		response.WriteError(h.logger, w, r, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{
+		"token": result.Token, "workspace": result.Workspace,
+	})
 }
 
 func (h *UserHandler) googleLogin(w http.ResponseWriter, r *http.Request) {
